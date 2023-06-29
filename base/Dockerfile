@@ -112,7 +112,8 @@ ENV PYTHONPATH=$PYTHONPATH:/usr/lib/python3/dist-packages/cv2/python-3.10/
 
 
 RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
-    git clone --recursive https://github.com/Sky360-Repository/bgslibrary.git && \
+    git clone --depth=1 --recursive https://github.com/Sky360-Repository/bgslibrary.git && \
+    mkdir -p bgslibrary/build && \
     cd bgslibrary/build && \
     cmake .. && make -j $(nproc) && cd .. && \
     python setup.py build && python setup.py install && \
@@ -148,7 +149,8 @@ RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
 # Sky360Lib
 
 RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
-    git clone --recursive https://github.com/Sky360-Repository/sky360lib.git && \
+    git clone --depth=1 --recursive https://github.com/Sky360-Repository/sky360lib.git && \
+    mkdir -p sky360lib/build && \
     cd sky360lib/build && \
     cmake -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
     cmake --build . -j$(nproc) && \
