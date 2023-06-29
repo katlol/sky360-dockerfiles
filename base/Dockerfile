@@ -157,3 +157,62 @@ RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
     make install && \
     rm -rf $TMPDIR
 ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/python3.10/dist-packages/sky360lib:/opt/sky360lib/build/lib
+
+
+### from https://github.com/Sky360-Repository/dockerfiles/blob/master/current/ros2/Dockerfile-base
+
+# dependencies
+# this speeds up the time we need to update repos
+
+# ROS
+RUN apt-get update && apt-get install -y lsb-release && \
+# ^ FIXME add me to the base image
+    curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2.list && \
+# vulcanexus
+    curl -sSL https://raw.githubusercontent.com/eProsima/vulcanexus/main/vulcanexus.key -o /usr/share/keyrings/vulcanexus-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/vulcanexus-archive-keyring.gpg] http://repo.vulcanexus.org/debian $(lsb_release -cs) main" > /etc/apt/sources.list.d/vulcanexus.list && \
+    apt-get update && apt-get install -y \
+      locales \
+      curl \
+      gnupg2 \
+      lsb-release \
+      sudo \
+      tzdata \
+    && \
+    locale-gen en_GB.UTF-8 && \
+    update-locale LC_ALL=en_GB.UTF-8 LANG=en_GB.UTF-8 && \
+    dpkg-reconfigure --frontend noninteractive tzdata && \
+    # Install ROS2
+    apt-get install -y \
+      ros-humble-ros-base \
+      ros-humble-rosbridge-server \
+      python3-argcomplete && \
+    # Install vulcanexus-humble-base
+    apt-get install -y \
+      vulcanexus-humble-base && \
+    rm -rf /var/lib/apt/lists/* && apt-get clean && apt-get autoclean
+    ## BEGIN Prometheus Stuff
+
+# Install prometheus
+RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
+    git clone --depth=1 --recursive https://github.com/eProsima/prometheus-cpp.git && \
+    mkdir -p prometheus-cpp/build && \
+    cd prometheus-cpp/build && \
+    cmake .. -DBUILD_SHARED_LIBS=ON -DENABLE_PUSH=OFF -DENABLE_COMPRESSION=OFF && \
+    cmake --build . --parallel 4 && \
+    cmake --install . && \
+    rm -rf $TMPDIR
+
+## END Prometheus Stuff
+
+ENV ROS_DISTRO=humble \
+    AMENT_PREFIX_PATH=/opt/ros/humble \
+    COLCON_PREFIX_PATH=/opt/ros/humble \
+    LD_LIBRARY_PATH=/opt/ros/humble/lib \
+    PATH=/opt/ros/humble/bin:$PATH \
+    PYTHONPATH=$PYTHONPATH:/opt/ros/humble/lib/python3.10/site-packages \
+    ROS_PYTHON_VERSION=3 \
+    ROS_VERSION=2 \
+    DEBIAN_FRONTEND= \
+    LANG=en_GB.UTF-8
