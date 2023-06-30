@@ -7,7 +7,8 @@ ENV TZ=Etc/UTC \
 # Install dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      build-essentials git cmake pkg-config wget unzip openssh-client ca-certificates && \
+      lsb-release build-essentials git cmake pkg-config wget unzip openssh-client ca-certificates && \
+      # FIXME add all common dependencies here
     rm -rf /var/lib/apt/lists/* && apt-get clean && apt-get autoclean
 
 # OpenCV
@@ -15,6 +16,7 @@ RUN apt-get update && \
 FROM builder AS opencv
 
 RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
+    # FIXME add all dependencies to build opencv here
     wget -qO opencv-$OPENCV_VERSION.zip https://github.com/opencv/opencv/archive/$OPENCV_VERSION.zip && \
     wget -qO opencv_contrib-$OPENCV_VERSION.zip https://github.com/opencv/opencv_contrib/archive/$OPENCV_VERSION.zip && \
     unzip opencv-$OPENCV_VERSION.zip && \
@@ -54,16 +56,24 @@ RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
       .. && \
     make -j $(nproc) && \
     make install && \
+    # FIXME instead of make install, create a tarball to copy to the final image?
     sh -c 'echo "/usr/local/lib" >> /etc/ld.so.conf.d/opencv.conf' && \
     ldconfig && \
     rm -rf $TMPDIR
 
-ENV PYTHONPATH=$PYTHONPATH:/usr/lib/python3/dist-packages/cv2/python-3.10/
+
+# FIXME what is the correct way to add opencv to python path?
+#ENV PYTHONPATH=$PYTHONPATH:/usr/lib/python3/dist-packages/cv2/python-3.10/
+
 
 # BGS Library
 
 FROM builder AS bgslibrary
+# FIXME Copy opencv from previous stage
+#COPY --from=opencv /usr/local/ /usr/local/ ???
+
 RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
+# FIXME add all dependencies to build bgslibrary here
     git clone --depth=1 --recursive https://github.com/Sky360-Repository/bgslibrary.git && \
     mkdir -p bgslibrary/build && \
     cd bgslibrary/build && \
@@ -78,7 +88,9 @@ RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
 
 # QHY SDK
 FROM builder AS qhy
+# FIXME copy any requirements from previous stages
 RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
+# FIXME add all dependencies to build qhy here
     AMD64_LINK=https://www.qhyccd.com/file/repository/publish/SDK/230228/sdk_linux64_23.02.28.tgz && \
     ARM64_LINK=https://www.qhyccd.com/file/repository/publish/SDK/230228/sdk_Arm64_23.02.28.tgz && \
     # detect
@@ -100,7 +112,10 @@ RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
 
 # Sky360Lib
 FROM builder AS sky360lib
+# FIXME copy any requirements from previous stages
+
 RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
+    # FIXME add all dependencies to build sky360lib here
     git clone --depth=1 --recursive https://github.com/Sky360-Repository/sky360lib.git && \
     mkdir -p sky360lib/build && \
     cd sky360lib/build && \
@@ -113,13 +128,13 @@ ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/python3.10/dist-packages/sky360lib:/op
 
 ### from https://github.com/Sky360-Repository/dockerfiles/blob/master/current/ros2/Dockerfile-base
 
-# dependencies
-# this speeds up the time we need to update repos
-
 # ROS
 FROM builder AS ros2
+# FIXME copy any requirements from previous stages
+# FIXME maybe this should be the final image?
+# is there any reason to have a separate image for ros2?
+
 RUN apt-get update && apt-get install -y lsb-release && \
-# ^ FIXME add me to the base image
     curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2.list && \
 # vulcanexus
@@ -149,13 +164,16 @@ RUN apt-get update && apt-get install -y lsb-release && \
 
 # Install prometheus
 FROM builder AS prometheus
+# FIXME copy any requirements from previous stages
 RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
+    # FIXME add all dependencies to build prometheus here
     git clone --depth=1 --recursive https://github.com/eProsima/prometheus-cpp.git && \
     mkdir -p prometheus-cpp/build && \
     cd prometheus-cpp/build && \
     cmake .. -DBUILD_SHARED_LIBS=ON -DENABLE_PUSH=OFF -DENABLE_COMPRESSION=OFF && \
     cmake --build . --parallel 4 && \
     cmake --install . && \
+    # ^ FIXME instead of make install, create a tarball to copy to the final image?
     rm -rf $TMPDIR
 
 ## END Prometheus Stuff
@@ -166,6 +184,11 @@ COPY --from=qhy /usr/local/ /usr/local/
 COPY --from=sky360lib /usr/local/ /usr/local/
 COPY --from=ros2 /usr/ /usr/
 COPY --from=prometheus /usr/local/ /usr/local/
+# ^ FIXME the paths above are not correct, but I don't know how to fix them
+# one should copy only the required files, not the whole /usr/local
+# maybe it should be make installed in a temporary directory and then copied to the final image?
+# or maybe not installed at all, but just copied to the final image?
+# FIXME FIXME
 # run dependencies
 RUN apt-get update && apt-get install -y \
       locales \
