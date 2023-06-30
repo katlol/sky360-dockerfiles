@@ -1,66 +1,18 @@
-FROM ubuntu:22.04
+FROM debian:testing-slim AS builder
 
 ENV TZ=Etc/UTC \
     DEBIAN_FRONTEND=noninteractive \
     OPENCV_VERSION=4.7.0
 
 # Install dependencies
-RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
-    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone && \
-    apt-get update && \
-    apt-get install -y  \
-    build-essential \
-    cmake \
-    pkg-config \
-    wget \
-    git \
-    unzip \
-    nano \
-    curl \
-    libgtk-3-dev \
-    libavcodec-dev \
-    libavformat-dev \
-    libswscale-dev \
-    libv4l-dev \
-    libxvidcore-dev \
-    libx264-dev \
-    libjpeg-dev \
-    libpng-dev \
-    libtiff-dev \
-    gfortran \
-    openexr \
-    libatlas-base-dev \
-    python3-dev \
-    python3-numpy \
-    python3-pip \
-    libtbb2 \
-    libtbb-dev \
-    libdc1394-25 \
-    libdc1394-dev \
-    libopenexr-dev \
-    libunwind-dev \
-    libgstreamer-plugins-base1.0-dev \
-    libgstreamer-opencv1.0-0 \
-    libgstreamer1.0-dev \
-    liblapacke-dev \
-    libva-dev libva-drm2 libva-x11-2 libva-glx2 \
-    libhdf5-dev \
-    qtbase5-dev \
-    qtchooser \
-    qt5-qmake \
-    qtbase5-dev-tools \
-    libvtk9-dev libvtk9-qt-dev \
-    usbutils \
-    libusb-1.0-0-dev \
-    clang \
-    libboost-all-dev && \
-    curl https://sh.rustup.rs -sSf | sh -s -- -y && \
-    ln -s /usr/bin/python3 /usr/bin/python && \
-    # cleanup
-    apt-get autoclean && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* $TMPDIR
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      build-essentials git cmake pkg-config wget unzip openssh-client ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && apt-get clean && apt-get autoclean
 
 # OpenCV
+
+FROM builder AS opencv
 
 RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
     wget -qO opencv-$OPENCV_VERSION.zip https://github.com/opencv/opencv/archive/$OPENCV_VERSION.zip && \
@@ -110,7 +62,7 @@ ENV PYTHONPATH=$PYTHONPATH:/usr/lib/python3/dist-packages/cv2/python-3.10/
 
 # BGS Library
 
-
+FROM builder AS bgslibrary
 RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
     git clone --depth=1 --recursive https://github.com/Sky360-Repository/bgslibrary.git && \
     mkdir -p bgslibrary/build && \
@@ -125,7 +77,7 @@ RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
 
 
 # QHY SDK
-
+FROM builder AS qhy
 RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
     AMD64_LINK=https://www.qhyccd.com/file/repository/publish/SDK/230228/sdk_linux64_23.02.28.tgz && \
     ARM64_LINK=https://www.qhyccd.com/file/repository/publish/SDK/230228/sdk_Arm64_23.02.28.tgz && \
@@ -147,7 +99,7 @@ RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
 
 
 # Sky360Lib
-
+FROM builder AS sky360lib
 RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
     git clone --depth=1 --recursive https://github.com/Sky360-Repository/sky360lib.git && \
     mkdir -p sky360lib/build && \
@@ -165,6 +117,7 @@ ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/python3.10/dist-packages/sky360lib:/op
 # this speeds up the time we need to update repos
 
 # ROS
+FROM builder AS ros2
 RUN apt-get update && apt-get install -y lsb-release && \
 # ^ FIXME add me to the base image
     curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
@@ -195,6 +148,7 @@ RUN apt-get update && apt-get install -y lsb-release && \
     ## BEGIN Prometheus Stuff
 
 # Install prometheus
+FROM builder AS prometheus
 RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
     git clone --depth=1 --recursive https://github.com/eProsima/prometheus-cpp.git && \
     mkdir -p prometheus-cpp/build && \
@@ -205,6 +159,26 @@ RUN TMPDIR=$(mktemp -d) && cd $TMPDIR && \
     rm -rf $TMPDIR
 
 ## END Prometheus Stuff
+FROM debian:slim
+COPY --from=opencv /usr/local/ /usr/local/
+COPY --from=bgslibrary /usr/local/ /usr/local/
+COPY --from=qhy /usr/local/ /usr/local/
+COPY --from=sky360lib /usr/local/ /usr/local/
+COPY --from=ros2 /usr/ /usr/
+COPY --from=prometheus /usr/local/ /usr/local/
+# run dependencies
+RUN apt-get update && apt-get install -y \
+      locales \
+      curl \
+      gnupg2 \
+      lsb-release \
+      sudo \
+      tzdata \
+    && \
+    locale-gen en_GB.UTF-8 && \
+    update-locale LC_ALL=en_GB.UTF-8 LANG=en_GB.UTF-8 && \
+    dpkg-reconfigure --frontend noninteractive tzdata && \
+    rm -rf /var/lib/apt/lists/* && apt-get clean && apt-get autoclean
 
 ENV ROS_DISTRO=humble \
     AMENT_PREFIX_PATH=/opt/ros/humble \
